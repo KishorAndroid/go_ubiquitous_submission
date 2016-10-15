@@ -1,15 +1,14 @@
-package com.example.android.sunshine.app.wear;
+package com.example.android.sunshine.app.weatherwatchface;
 
 /**
  * Created by kishorandroid on 08/10/16.
  */
 
-import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
+import android.content.Intent;
+import android.os.Bundle;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
-import com.example.android.sunshine.app.sync.SunshineSyncAdapter;
 import com.google.android.gms.wearable.DataEvent;
 import com.google.android.gms.wearable.DataEventBuffer;
 import com.google.android.gms.wearable.DataMap;
@@ -34,31 +33,40 @@ public class WearWeatherService extends WearableListenerService {
             if (dataEvent.getType() == DataEvent.TYPE_CHANGED) {
                 String path = dataEvent.getDataItem().getUri().getPath();
                 Log.d(TAG, path);
+                String mWeatherHigh = null;
+                String mWeatherLow = null;
+                int weatherId = -1;
                 DataMap dataMap = DataMapItem.fromDataItem(dataEvent.getDataItem()).getDataMap();
                 if (path.equals(WEATHER_INFO_PATH)) {
                     if (dataMap.containsKey(KEY_HIGH)) {
-                        String mWeatherHigh = dataMap.getString(KEY_HIGH);
-                        Log.d(TAG, "High = " + mWeatherHigh);
+                        mWeatherHigh = dataMap.getString(KEY_HIGH);
+                        Log.d(TAG, "Wear High = " + mWeatherHigh);
                     } else {
-                        Log.d(TAG, "What? No high?");
+                        Log.d(TAG, "Wear What? No high?");
                     }
 
                     if (dataMap.containsKey(KEY_LOW)) {
-                        String mWeatherLow = dataMap.getString(KEY_LOW);
-                        Log.d(TAG, "Low = " + mWeatherLow);
+                        mWeatherLow = dataMap.getString(KEY_LOW);
+                        Log.d(TAG, "Wear Low = " + mWeatherLow);
                     } else {
-                        Log.d(TAG, "What? No low?");
+                        Log.d(TAG, "Wear What? No low?");
                     }
 
                     if (dataMap.containsKey(KEY_WEATHER_ID)) {
-                        int weatherId = dataMap.getInt(KEY_WEATHER_ID);
-
+                        weatherId = dataMap.getInt(KEY_WEATHER_ID);
+                        Log.d(TAG, "Wear weatherId = " + weatherId);
                     } else {
                         Log.d(TAG, "What? no weatherId?");
                     }
                 }
-                if (path.equals(WEATHER_PATH)) {
-                    SunshineSyncAdapter.syncImmediately(this);
+                if (mWeatherHigh != null && mWeatherLow != null && weatherId != -1) {
+                    Intent intent = new Intent("weather-data-changed");
+                    Bundle bundle = new Bundle();
+                    bundle.putString("HIGH", mWeatherHigh);
+                    bundle.putString("LOW", mWeatherLow);
+                    bundle.putInt("ICON", weatherId);
+                    intent.putExtras(bundle);
+                    LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
                 }
             }
         }

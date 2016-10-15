@@ -35,6 +35,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.wearable.watchface.CanvasWatchFaceService;
 import android.support.wearable.watchface.WatchFaceStyle;
 import android.text.format.DateFormat;
@@ -110,7 +111,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine implements DataApi.DataListener, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+    private class Engine extends CanvasWatchFaceService.Engine implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
         final Handler mUpdateTimeHandler = new EngineHandler(this);
         boolean mRegisteredTimeZoneReceiver = false;
         Paint mBackgroundPaint;
@@ -119,7 +120,7 @@ public class MyWatchFace extends CanvasWatchFaceService {
         Calendar mCalendar;
 
         private static final String WEATHER_PATH = "/weather";
-        private static final String WEATHER_INFO_PATH = "/weather-info";
+        private static final String WEATHER_INFO_PATH = "/weather_info";
 
         private static final String KEY_UUID = "uuid";
         private static final String KEY_HIGH = "high";
@@ -192,11 +193,15 @@ public class MyWatchFace extends CanvasWatchFaceService {
             mTextTempLowAmbientPaint = createTextPaint(Color.WHITE, NORMAL_TYPEFACE);
 
             mCalendar = Calendar.getInstance();
+
+            LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(mWeatherDataChangedListener,
+                    new IntentFilter("weather-data-changed"));
         }
 
         @Override
         public void onDestroy() {
             mUpdateTimeHandler.removeMessages(MSG_UPDATE_TIME);
+            LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(mWeatherDataChangedListener);
             super.onDestroy();
         }
 
@@ -226,7 +231,6 @@ public class MyWatchFace extends CanvasWatchFaceService {
                 unregisterReceiver();
 
                 if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
-                    Wearable.DataApi.removeListener(mGoogleApiClient, this);
                     mGoogleApiClient.disconnect();
                 }
             }
@@ -468,8 +472,6 @@ public class MyWatchFace extends CanvasWatchFaceService {
 
         @Override
         public void onConnected(@Nullable Bundle bundle) {
-            Wearable.DataApi.addListener(mGoogleApiClient, Engine.this);
-
             requestWeatherInfo();
         }
 
@@ -483,47 +485,8 @@ public class MyWatchFace extends CanvasWatchFaceService {
 
         }
 
-        @Override
-        public void onDataChanged(DataEventBuffer dataEventBuffer) {
-            for (DataEvent dataEvent : dataEventBuffer) {
-                if (dataEvent.getType() == DataEvent.TYPE_CHANGED) {
-                    DataMap dataMap = DataMapItem.fromDataItem(dataEvent.getDataItem()).getDataMap();
-                    String path = dataEvent.getDataItem().getUri().getPath();
-                    Log.d(TAG, path);
-                    if (path.equals(WEATHER_INFO_PATH)) {
-                        if (dataMap.containsKey(KEY_HIGH)) {
-                            mWeatherHigh = dataMap.getString(KEY_HIGH);
-                            Log.d(TAG, "High = " + mWeatherHigh);
-                        } else {
-                            Log.d(TAG, "What? No high?");
-                        }
-
-                        if (dataMap.containsKey(KEY_LOW)) {
-                            mWeatherLow = dataMap.getString(KEY_LOW);
-                            Log.d(TAG, "Low = " + mWeatherLow);
-                        } else {
-                            Log.d(TAG, "What? No low?");
-                        }
-
-                        if (dataMap.containsKey(KEY_WEATHER_ID)) {
-                            int weatherId = dataMap.getInt(KEY_WEATHER_ID);
-                            Drawable b = getResources().getDrawable(Utility.getIconResourceForWeatherCondition(weatherId));
-                            Bitmap icon = ((BitmapDrawable) b).getBitmap();
-                            float scaledWidth = (mTextTempHighPaint.getTextSize() / icon.getHeight()) * icon.getWidth();
-                            mWeatherIcon = Bitmap.createScaledBitmap(icon, (int) scaledWidth, (int) mTextTempHighPaint.getTextSize(), true);
-
-                        } else {
-                            Log.d(TAG, "What? no weatherId?");
-                        }
-
-                        invalidate();
-                    }
-                }
-            }
-        }
-
         public void requestWeatherInfo() {
-            PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(WEATHER_PATH);
+            PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(WEATHER_INFO_PATH);
             putDataMapRequest.getDataMap().putString(KEY_UUID, UUID.randomUUID().toString());
             PutDataRequest request = putDataMapRequest.asPutDataRequest();
 
@@ -539,5 +502,22 @@ public class MyWatchFace extends CanvasWatchFaceService {
                         }
                     });
         }
+
+        private BroadcastReceiver mWeatherDataChangedListener = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Bundle weatherDataBundle = intent.getExtras();
+                Log.d(TAG, "mWeatherDataChangedListener " + weatherDataBundle.getString("HIGH"));
+                Log.d(TAG, "mWeatherDataChangedListener " + weatherDataBundle.getString("LOW"));
+                Log.d(TAG, "mWeatherDataChangedListener " + weatherDataBundle.getInt("ICON"));
+                mWeatherHigh = weatherDataBundle.getString("HIGH");
+                mWeatherLow = weatherDataBundle.getString("LOW");
+                Drawable b = getResources().getDrawable(Utility.getIconResourceForWeatherCondition(weatherDataBundle.getInt("ICON")));
+                Bitmap icon = ((BitmapDrawable) b).getBitmap();
+                float scaledWidth = (mTextTempHighPaint.getTextSize() / icon.getHeight()) * icon.getWidth();
+                mWeatherIcon = Bitmap.createScaledBitmap(icon, (int) scaledWidth, (int) mTextTempHighPaint.getTextSize(), true);
+                invalidate();
+            }
+        };
     }
 }

@@ -24,6 +24,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.annotation.IntDef;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.TaskStackBuilder;
 import android.text.format.Time;
@@ -36,6 +38,7 @@ import com.example.android.sunshine.app.R;
 import com.example.android.sunshine.app.Utility;
 import com.example.android.sunshine.app.data.WeatherContract;
 import com.example.android.sunshine.app.muzei.WeatherMuzeiSource;
+import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.wearable.DataApi;
@@ -59,7 +62,7 @@ import java.util.UUID;
 import java.util.Vector;
 import java.util.concurrent.ExecutionException;
 
-public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
+public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener{
     public final String LOG_TAG = SunshineSyncAdapter.class.getSimpleName();
     public static final String ACTION_DATA_UPDATED =
             "com.example.android.sunshine.app.ACTION_DATA_UPDATED";
@@ -70,7 +73,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
     private static final long DAY_IN_MILLIS = 1000 * 60 * 60 * 24;
     private static final int WEATHER_NOTIFICATION_ID = 3004;
 
-    private static final String WEATHER_INFO_PATH = "/weather-info";
+    private static final String WEATHER_INFO_PATH = "/weather_info";
     private static final String KEY_UUID = "uuid";
     private static final String KEY_HIGH = "high";
     private static final String KEY_LOW = "low";
@@ -108,6 +111,7 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
             mGoogleApiClient = new GoogleApiClient.Builder(context)
                     .addApi(Wearable.API)
                     .build();
+            mGoogleApiClient.connect();
         }
     }
 
@@ -406,36 +410,51 @@ public class SunshineSyncAdapter extends AbstractThreadedSyncAdapter {
     }
 
     public void sendWeatherInfoToWearable(double high, double low, int weatherId) {
-        Log.d(LOG_TAG, "Sending Weather data");
+        Log.d(LOG_TAG, "Sending data");
 
         if (mGoogleApiClient == null) {
             return;
         }
 
-        mGoogleApiClient.connect();
+        if (!mGoogleApiClient.isConnected()) {
+            return;
+        }
 
-        PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(WEATHER_INFO_PATH);
+        PutDataMapRequest putDataMapRequest = PutDataMapRequest.create(WEATHER_INFO_PATH).setUrgent();
 
         putDataMapRequest.getDataMap().putString(KEY_UUID, UUID.randomUUID().toString());
-        putDataMapRequest.getDataMap().putString(KEY_HIGH, Utility.formatTemperature(getContext(), high));
-        putDataMapRequest.getDataMap().putString(KEY_LOW, Utility.formatTemperature(getContext(), low));
+        putDataMapRequest.getDataMap().putString(KEY_HIGH, Utility.formatTemperature(getContext(), (int)high));
+        putDataMapRequest.getDataMap().putString(KEY_LOW, Utility.formatTemperature(getContext(), (int)low));
         putDataMapRequest.getDataMap().putInt(KEY_WEATHER_ID, weatherId);
 
         PutDataRequest request = putDataMapRequest.asPutDataRequest();
-
-        Log.d(LOG_TAG, "High:" + high + ", Low:" + low + ", Condition ID: " + weatherId);
 
         Wearable.DataApi.putDataItem(mGoogleApiClient, request)
                 .setResultCallback(new ResultCallback<DataApi.DataItemResult>() {
                     @Override
                     public void onResult(DataApi.DataItemResult dataItemResult) {
                         if (!dataItemResult.getStatus().isSuccess()) {
-                            Log.d(LOG_TAG, "Failed to send weather data");
+                            Log.d(LOG_TAG, "Failure");
                         } else {
-                            Log.d(LOG_TAG, "Successfully sent weather data");
+                            Log.d(LOG_TAG, "Success");
                         }
                     }
                 });
+    }
+
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
     }
 
     private void updateWidgets() {
